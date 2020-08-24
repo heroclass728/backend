@@ -27,6 +27,18 @@ class LikeDynamo:
     def get_like(self, liked_by_user_id, post_id):
         return self.client.get_item(self.pk(liked_by_user_id, post_id))
 
+    def get_common_likes(self, liked_by_user_id):
+        query_kwargs = {
+            'KeyConditionExpression': Key('gsiA1PartitionKey').eq(f'like/{liked_by_user_id}'),
+            'IndexName': 'GSI-A1',
+        }
+        liked_users = self.client.generate_all_query(query_kwargs)
+        like_matches = []
+        for liked_user in liked_users:
+            if (liked_user["likedByUserId"] == liked_by_user_id):
+                like_matches.append(liked_user)
+        return like_matches
+
     def add_like(self, liked_by_user_id, post_item, like_status, now=None):
         now = now or pendulum.now('utc')
         liked_at_str = now.to_iso8601_string()

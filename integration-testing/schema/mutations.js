@@ -3,12 +3,14 @@ const gql = require('graphql-tag')
 const fragments = require('./fragments.js')
 
 module.exports.createCognitoOnlyUser = gql`
-  mutation CreateCognitoOnlyUser($username: String!, $fullName: String) {
-    createCognitoOnlyUser(username: $username, fullName: $fullName) {
+  mutation CreateCognitoOnlyUser($username: String!, $fullName: String, $date_of_birth: String, $gender: String) {
+    createCognitoOnlyUser(username: $username, fullName: $fullName, date_of_birth: $date_of_birth, gender: $gender) {
       userId
       username
       fullName
       email
+      date_of_birth
+      gender
       phoneNumber
       signedUpAt
     }
@@ -104,12 +106,14 @@ module.exports.setUserViewCountsHidden = gql`
 `
 
 module.exports.setUserDetails = gql`
-  mutation SetUserDetails($bio: String, $fullName: String, $photoPostId: ID, $username: String) {
-    setUserDetails(bio: $bio, fullName: $fullName, photoPostId: $photoPostId, username: $username) {
+  mutation SetUserDetails($bio: String, $fullName: String, $photoPostId: ID, $username: String, $date_of_birth: String, $gender: String) {
+    setUserDetails(bio: $bio, fullName: $fullName, photoPostId: $photoPostId, username: $username, date_of_birth: $date_of_birth, gender: $gender) {
       userId
       username
       bio
       fullName
+      date_of_birth
+      gender
       photo {
         ...ImageFragment
       }
@@ -179,7 +183,7 @@ module.exports.disableUser = gql`
 `
 
 module.exports.deleteUser = gql`
-  mutation DisableUser {
+  mutation DeleteUser {
     deleteUser {
       userId
       username

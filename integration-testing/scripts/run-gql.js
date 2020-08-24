@@ -125,6 +125,8 @@ const setUserDetails = gql`
       fullName
       bio
       email
+      date_of_birth
+      gender
       phoneNumber
     }
   }

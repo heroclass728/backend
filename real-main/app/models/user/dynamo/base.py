@@ -37,7 +37,7 @@ class UserDynamo:
         return self.client.delete_item(self.pk(user_id))
 
     def add_user(
-        self, user_id, username, full_name=None, email=None, phone=None, placeholder_photo_code=None, now=None
+        self, user_id, username, full_name=None, email=None, phone=None, placeholder_photo_code=None, now=None, date_of_birth=None, gender=None
     ):
         now = now or pendulum.now('utc')
         query_kwargs = {
@@ -61,6 +61,10 @@ class UserDynamo:
             query_kwargs['Item']['email'] = email
         if phone:
             query_kwargs['Item']['phoneNumber'] = phone
+        if date_of_birth:
+            query_kwargs['Item']['date_of_birth'] = date_of_birth
+        if gender:
+            query_kwargs['Item']['gender'] = gender
         try:
             return self.client.add_item(query_kwargs)
         except self.client.exceptions.ConditionalCheckFailedException:
@@ -142,6 +146,8 @@ class UserDynamo:
         likes_disabled=None,
         sharing_disabled=None,
         verification_hidden=None,
+        date_of_birth=None,
+        gender=None
     ):
         "To ignore an attribute, leave it set to None. To delete an attribute, set it to the empty string."
         expression_actions = collections.defaultdict(list)
@@ -167,6 +173,8 @@ class UserDynamo:
         process_attr('likesDisabled', likes_disabled)
         process_attr('sharingDisabled', sharing_disabled)
         process_attr('verificationHidden', verification_hidden)
+        process_attr('date_of_birth', date_of_birth)
+        process_attr('gender', gender)
 
         query_kwargs = {
             'Key': self.pk(user_id),
@@ -243,6 +251,17 @@ class UserDynamo:
             query_kwargs['KeyConditionExpression'] += ' AND gsiK1SortKey <= :mea'
             query_kwargs['ExpressionAttributeValues'][':mea'] = max_expires_at.to_iso8601_string()
         return (key['partitionKey'].split('/')[1] for key in self.client.generate_all_query(query_kwargs))
+
+    def update_last_post_view_at(self, user_id, now=None):
+        now = now or pendulum.now('utc')
+        query_kwargs = {
+            'Key': self.pk(user_id),
+            'UpdateExpression': 'SET lastPostViewAt = :lpva',
+            'ConditionExpression': 'NOT lastPostViewAt > :lpva',
+            'ExpressionAttributeValues': {':lpva': now.to_iso8601_string()},
+        }
+        failure_warning = f'Failed to update lastPostViewAt for user `{user_id}`'
+        return self.client.update_item(query_kwargs, failure_warning=failure_warning)
 
     def increment_album_count(self, user_id):
         return self.client.increment_count(self.pk(user_id), 'albumCount')

@@ -24,6 +24,7 @@ from app.models.post.exceptions import PostException
 from app.models.user.enums import UserStatus
 from app.models.user.exceptions import UserException
 from app.utils import image_size
+from app.models import LikeManager, PotentialManager
 
 from .. import xray
 from . import routes
@@ -44,7 +45,9 @@ clients = {
     'cognito': clients.CognitoClient(),
     'dynamo': clients.DynamoClient(),
     'facebook': clients.FacebookClient(),
+    'google': clients.GoogleClient(secrets_manager_client.get_google_client_ids),
     'pinpoint': clients.PinpointClient(),
+    'post_verification': clients.PostVerificationClient(secrets_manager_client.get_post_verification_api_creds),
     's3_uploads': clients.S3Client(S3_UPLOADS_BUCKET),
     's3_placeholder_photos': clients.S3Client(S3_PLACEHOLDER_PHOTOS_BUCKET),
 }
@@ -60,6 +63,7 @@ chat_message_manager = managers.get('chat_message') or models.ChatMessageManager
 comment_manager = managers.get('comment') or models.CommentManager(clients, managers=managers)
 follower_manager = managers.get('follower') or models.FollowerManager(clients, managers=managers)
 like_manager = managers.get('like') or models.LikeManager(clients, managers=managers)
+match_manager = managers.get('potential') or models.MatchManager(clients, managers=managers)
 post_manager = managers.get('post') or models.PostManager(clients, managers=managers)
 user_manager = managers.get('user') or models.UserManager(clients, managers=managers)
 
@@ -82,8 +86,10 @@ def validate_caller(func):
 def create_cognito_only_user(caller_user_id, arguments, source, context):
     username = arguments['username']
     full_name = arguments.get('fullName')
+    date_of_birth = arguments.get('date_of_birth')
+    gender = arguments.get('gender')
     try:
-        user = user_manager.create_cognito_only_user(caller_user_id, username, full_name=full_name)
+        user = user_manager.create_cognito_only_user(caller_user_id, username, full_name=full_name, date_of_birth=date_of_birth, gender=gender)
     except UserException as err:
         raise ClientException(str(err))
     return user.serialize(caller_user_id)
@@ -111,6 +117,20 @@ def create_facebook_user(caller_user_id, arguments, source, context):
     try:
         user = user_manager.create_federated_user(
             'facebook', caller_user_id, username, facebook_token, full_name=full_name
+        )
+    except UserException as err:
+        raise ClientException(str(err))
+    return user.serialize(caller_user_id)
+
+
+@routes.register('Mutation.createGoogleUser')
+def create_google_user(caller_user_id, arguments, source, context):
+    username = arguments['username']
+    full_name = arguments.get('fullName')
+    google_id_token = arguments['googleIdToken']
+    try:
+        user = user_manager.create_federated_user(
+            'google', caller_user_id, username, google_id_token, full_name=full_name
         )
     except UserException as err:
         raise ClientException(str(err))
@@ -179,6 +199,8 @@ def set_user_details(caller_user, arguments, source, context):
     likes_disabled = arguments.get('likesDisabled')
     sharing_disabled = arguments.get('sharingDisabled')
     verification_hidden = arguments.get('verificationHidden')
+    date_of_birth = arguments.get('date_of_birth')
+    gender = arguments.get('gender')
 
     args = (
         username,
@@ -194,6 +216,8 @@ def set_user_details(caller_user, arguments, source, context):
         sharing_disabled,
         verification_hidden,
         view_counts_hidden,
+        date_of_birth,
+        gender
     )
     if all(v is None for v in args):
         raise ClientException('Called without any arguments... probably not what you intended?')
@@ -229,6 +253,8 @@ def set_user_details(caller_user, arguments, source, context):
         likes_disabled=likes_disabled,
         sharing_disabled=sharing_disabled,
         verification_hidden=verification_hidden,
+        date_of_birth=date_of_birth,
+        gender=gender
     )
     return caller_user.serialize(caller_user.id)
 
@@ -822,7 +848,8 @@ def report_post_views(caller_user, arguments, source, context):
     if len(post_ids) > 100:
         raise ClientException('A max of 100 post ids may be reported at a time')
 
-    post_manager.record_views(post_ids, caller_user.id)
+    viewed_at = pendulum.now('utc')
+    post_manager.record_views(post_ids, caller_user.id, viewed_at=viewed_at)
     return True
 
 
@@ -1084,7 +1111,8 @@ def report_chat_views(caller_user, arguments, source, context):
     if len(chat_ids) > 100:
         raise ClientException('A max of 100 chat ids may be reported at a time')
 
-    chat_manager.record_views(chat_ids, caller_user.id)
+    viewed_at = pendulum.now('utc')
+    chat_manager.record_views(chat_ids, caller_user.id, viewed_at=viewed_at)
     return True
 
 
@@ -1190,3 +1218,21 @@ def lambda_client_error(caller_user_id, arguments, source, context):
 def lambda_server_error(caller_user_id, arguments, source, context):
     request_id = getattr(context, 'aws_request_id', None)
     raise Exception(f'Test of lambda server error, request `{request_id}`')
+
+
+@routes.register('Mutation.potential_matches')
+def get_potential_matches(caller_user_id, arguments, source, context):
+    try:
+        potential_matches = MatchManager().get_potential_matches(caller_user_id)
+    except UserException as err:
+        raise ClientException(str(err))
+    return potential_matches
+
+
+@routes.register('Mutation.like_matches')
+def get_like_matches(caller_user_id, arguments, source, context):
+    try:
+        like_matches = LikeManager().get_like_matches(caller_user_id)
+    except UserException as err:
+        raise ClientException(str(err))
+    return like_matches

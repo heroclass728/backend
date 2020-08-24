@@ -47,14 +47,18 @@ describe('Read and write properties our our own profile', () => {
     expect(resp.data.user.privacyStatus).toBe('PUBLIC')
   })
 
-  test('fullName and bio', async () => {
+  test('fullName and bio, date_of_birth and gender', async () => {
     const bio = "truckin'"
     const fullName = 'Hunter S.'
+    const date_of_birth='2020-08-20'
+    const gender = "man"
     const {client, userId} = await loginCache.getCleanLogin()
 
     let resp = await client.query({query: queries.user, variables: {userId}})
     expect(resp.data.user.bio).toBeNull()
     expect(resp.data.user.fullName).toBeNull()
+    expect(resp.data.user.date_of_birth).toBeNull()
+    expect(resp.data.user.gender).toBeNull()
 
     // set to some custom values
     resp = await client.mutate({mutation: mutations.setUserDetails, variables: {bio, fullName}})
@@ -64,6 +68,13 @@ describe('Read and write properties our our own profile', () => {
     resp = await client.query({query: queries.user, variables: {userId}})
     expect(resp.data.user.bio).toBe(bio)
     expect(resp.data.user.fullName).toBe(fullName)
+    expect(resp.data.user.date_of_birth).toBeNull()
+    expect(resp.data.user.gender).toBeNull()
+
+    // set to date_of_birth, gender
+    resp = await client.mutate({mutation: mutations.setUserDetails, variables: {date_of_birth, gender}})
+    expect(resp.data.setUserDetails.date_of_birth).toBe(date_of_birth)
+    expect(resp.data.setUserDetails.gender).toBe(gender)
 
     // clear out the custom values
     resp = await client.mutate({mutation: mutations.setUserDetails, variables: {bio: '', fullName: ''}})
@@ -73,6 +84,15 @@ describe('Read and write properties our our own profile', () => {
     resp = await client.query({query: queries.user, variables: {userId}})
     expect(resp.data.user.bio).toBeNull()
     expect(resp.data.user.fullName).toBeNull()
+
+    // clear out date_of_birth, gender
+    resp = await client.mutate({mutation: mutations.setUserDetails, variables: {date_of_birth: '', gender: ''}})
+    expect(resp.data.setUserDetails.date_of_birth).toBeNull()
+    expect(resp.data.setUserDetails.gender).toBeNull()
+
+    resp = await client.query({query: queries.user, variables: {userId}})
+    expect(resp.data.user.date_of_birth).toBeNull()
+    expect(resp.data.user.gender).toBeNull()
   })
 })
 
@@ -160,6 +180,13 @@ test('Various photoPostId failures', async () => {
   expect(resp.data.addPost.postId).toBe(postId)
   expect(resp.data.addPost.postStatus).toBe('COMPLETED')
   expect(resp.data.addPost.postType).toBe('IMAGE')
+  expect(resp.data.addPost.isVerified).toBe(false)
+
+  // verify can't set our profile photo using non-verified post
+  variables = {photoPostId: postId}
+  await expect(ourClient.mutate({mutation: mutations.setUserDetails, variables})).rejects.toThrow(
+    /ClientError: .*is not verified/,
+  )
 })
 
 test('Set and delete our profile photo, using postId', async () => {

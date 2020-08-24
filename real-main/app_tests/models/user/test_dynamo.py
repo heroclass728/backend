@@ -243,6 +243,8 @@ def test_set_user_details(user_dynamo):
         likes_disabled=True,
         sharing_disabled=True,
         verification_hidden=True,
+        date_of_birth='2020-08-20',
+        gender='man'
     )
     expected = {
         **expected_base_item,
@@ -259,6 +261,8 @@ def test_set_user_details(user_dynamo):
             'likesDisabled': True,
             'sharingDisabled': True,
             'verificationHidden': True,
+            'date_of_birth': '2020-08-20',
+            'gender': 'man'
         },
     }
     assert resp == expected
@@ -615,3 +619,37 @@ def test_generate_user_ids_by_subscription_level(user_dynamo):
     assert list(generate(DIAMOND, max_expires_at=expires_at_2 - ms)) == [user_id_1]
     assert list(generate(DIAMOND, max_expires_at=expires_at_2)) == [user_id_1, user_id_2]
     assert list(generate(DIAMOND)) == [user_id_1, user_id_2]
+
+
+def test_update_last_post_view_at(user_dynamo, caplog):
+    user_id = str(uuid4())
+    user_dynamo.add_user(user_id, str(uuid4())[:8])
+    assert 'lastPostViewAt' not in user_dynamo.get_user(user_id)
+    ms = pendulum.duration(microseconds=1)
+
+    # set it without specifying time exactly, verify
+    user_item = user_dynamo.update_last_post_view_at(user_id)
+    assert user_dynamo.get_user(user_id) == user_item
+    assert 'lastPostViewAt' in user_item
+    now = pendulum.parse(user_item['lastPostViewAt'])
+
+    # verify can't set it earlier time
+    with caplog.at_level(logging.WARNING):
+        user_dynamo.update_last_post_view_at(user_id, now=(now - ms))
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == 'WARNING'
+    assert all(x in caplog.records[0].msg for x in ['Failed to update lastPostViewAt', user_id])
+
+    # verify can set it to a later time
+    user_item = user_dynamo.update_last_post_view_at(user_id, now=(now + ms))
+    assert user_dynamo.get_user(user_id) == user_item
+    assert pendulum.parse(user_item['lastPostViewAt']) == now + ms
+
+    # verify setting it on a user that DNE fails softly
+    user_id_2 = str(uuid4())
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        user_dynamo.update_last_post_view_at(user_id_2)
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == 'WARNING'
+    assert all(x in caplog.records[0].msg for x in ['Failed to update lastPostViewAt', user_id_2])

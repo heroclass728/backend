@@ -50,6 +50,8 @@ def test_create_cognito_user(user_manager, cognito_client):
     username = 'myusername'
     full_name = 'my-full-name'
     email = f'{username}@real.app'
+    date_of_birth = '2020-08-20'
+    gender = 'man'
 
     # check the user doesn't already exist
     user = user_manager.get_user(user_id)
@@ -66,6 +68,8 @@ def test_create_cognito_user(user_manager, cognito_client):
     assert user.item['fullName'] == full_name
     assert user.item['email'] == email
     assert 'phoneNumber' not in user.item
+    assert user.item['date_of_birth'] == date_of_birth
+    assert user.item['gender'] == gender
 
     # double check user got into db
     user = user_manager.get_user(user_id)
@@ -75,6 +79,8 @@ def test_create_cognito_user(user_manager, cognito_client):
     assert user.item['fullName'] == full_name
     assert user.item['email'] == email
     assert 'phoneNumber' not in user.item
+    assert user.item['date_of_birth'] == date_of_birth
+    assert user.item['gender'] == gender
 
     # check cognito was set correctly
     assert user.cognito_client.get_user_attributes(user.id)['preferred_username'] == username
@@ -263,7 +269,7 @@ def test_create_cognito_only_user_follow_real_user_if_exists(user_manager, cogni
     assert followeds[0]['followedUserId'] == real_user.id
 
 
-@pytest.mark.parametrize('provider', ['apple', 'facebook'])
+@pytest.mark.parametrize('provider', ['apple', 'facebook', 'google'])
 def test_create_federated_user_success(user_manager, real_user, provider):
     provider_token = 'fb-google-or-apple-token'
     cognito_token = 'cog-token'
@@ -305,7 +311,7 @@ def test_create_federated_user_success(user_manager, real_user, provider):
     assert followeds[0]['followedUserId'] == real_user.id
 
 
-@pytest.mark.parametrize('provider', ['apple', 'facebook'])
+@pytest.mark.parametrize('provider', ['apple', 'facebook', 'google'])
 def test_create_federated_user_user_id_taken(user_manager, provider):
     # configure cognito to respond as if user_id is already taken
     user_id, username = str(uuid.uuid4()), str(uuid.uuid4())[:8]
@@ -317,7 +323,7 @@ def test_create_federated_user_user_id_taken(user_manager, provider):
         user_manager.create_federated_user(provider, user_id, username, 'provider-token')
 
 
-@pytest.mark.parametrize('provider', ['apple', 'facebook'])
+@pytest.mark.parametrize('provider', ['apple', 'facebook', 'google'])
 def test_create_federated_user_username_taken(user_manager, provider):
     # configure cognito to respond as if username is already taken
     user_id, username = str(uuid.uuid4()), str(uuid.uuid4())[:8]
@@ -330,7 +336,7 @@ def test_create_federated_user_username_taken(user_manager, provider):
         user_manager.create_federated_user(provider, user_id, username, 'provider-token')
 
 
-@pytest.mark.parametrize('provider', ['apple', 'facebook'])
+@pytest.mark.parametrize('provider', ['apple', 'facebook', 'google'])
 def test_create_federated_user_email_taken(user_manager, provider):
     # configure cognito to respond as if email is already taken
     user_id, username = str(uuid.uuid4()), str(uuid.uuid4())[:8]
@@ -344,7 +350,7 @@ def test_create_federated_user_email_taken(user_manager, provider):
         user_manager.create_federated_user(provider, user_id, username, 'provider-token')
 
 
-@pytest.mark.parametrize('provider', ['apple', 'facebook'])
+@pytest.mark.parametrize('provider', ['apple', 'facebook', 'google'])
 def test_create_federated_user_invalid_token(user_manager, caplog, provider):
     provider_token = 'google-token'
     user_id = 'my-user-id'
@@ -364,7 +370,7 @@ def test_create_federated_user_invalid_token(user_manager, caplog, provider):
     assert 'wrong flavor' in caplog.records[0].msg
 
 
-@pytest.mark.parametrize('provider', ['apple', 'facebook'])
+@pytest.mark.parametrize('provider', ['apple', 'facebook', 'google'])
 def test_create_federated_user_cognito_identity_pool_exception_cleansup(user_manager, real_user, provider):
     user_id = 'my-user-id'
 
@@ -379,6 +385,55 @@ def test_create_federated_user_cognito_identity_pool_exception_cleansup(user_man
     with pytest.raises(Exception, match='anything bad'):
         user_manager.create_federated_user(provider, user_id, 'username', 'provider-token')
     assert user_manager.cognito_client.delete_user_pool_entry.mock_calls == [mock.call(user_id)]
+
+
+def test_get_available_placeholder_photo_codes(user_manager):
+    s3_client = user_manager.s3_placeholder_photos_client
+    user_manager.placeholder_photos_directory = 'placeholder-photos'
+
+    # check before we add any placeholder photos
+    codes = user_manager.get_available_placeholder_photo_codes()
+    assert codes == []
+
+    # add a placeholder photo, check again
+    path = 'placeholder-photos/black-white-cat/native.jpg'
+    s3_client.put_object(path, b'placeholder', 'image/jpeg')
+    codes = user_manager.get_available_placeholder_photo_codes()
+    assert len(codes) == 1
+    assert codes[0] == 'black-white-cat'
+
+    # add another placeholder photo, check again
+    path = 'placeholder-photos/orange-person/native.jpg'
+    s3_client.put_object(path, b'placeholder', 'image/jpeg')
+    path = 'placeholder-photos/orange-person/4k.jpg'
+    s3_client.put_object(path, b'placeholder', 'image/jpeg')
+    codes = user_manager.get_available_placeholder_photo_codes()
+    assert len(codes) == 2
+    assert codes[0] == 'black-white-cat'
+    assert codes[1] == 'orange-person'
+
+
+def test_get_random_placeholder_photo_code(user_manager):
+    s3_client = user_manager.s3_placeholder_photos_client
+    user_manager.placeholder_photos_directory = 'placeholder-photos'
+
+    # check before we add any placeholder photos
+    code = user_manager.get_random_placeholder_photo_code()
+    assert code is None
+
+    # add a placeholder photo, check again
+    path = 'placeholder-photos/black-white-cat/native.jpg'
+    s3_client.put_object(path, b'placeholder', 'image/jpeg')
+    code = user_manager.get_random_placeholder_photo_code()
+    assert code == 'black-white-cat'
+
+    # add another placeholder photo, check again
+    path = 'placeholder-photos/orange-person/native.jpg'
+    s3_client.put_object(path, b'placeholder', 'image/jpeg')
+    path = 'placeholder-photos/orange-person/4k.jpg'
+    s3_client.put_object(path, b'placeholder', 'image/jpeg')
+    code = user_manager.get_random_placeholder_photo_code()
+    assert code in ['black-white-cat', 'orange-person']
 
 
 def test_get_text_tags(user_manager, user1, user2):

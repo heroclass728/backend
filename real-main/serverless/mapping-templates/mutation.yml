@@ -83,6 +83,18 @@
   response: Lambda.response.vtl
 
 - type: Mutation
+  field: potential_matches
+  dataSource: LambdaDataSource
+  request: Lambda.request.vtl
+  response: Lambda.response.vt
+
+- type: Mutation
+  field: like_matches
+  dataSource: LambdaDataSource
+  request: Lambda.request.vtl
+  response: Lambda.response.vt
+
+- type: Mutation
   field: setUserAcceptedEULAVersion
   dataSource: LambdaDataSource
   request: Lambda.request.vtl

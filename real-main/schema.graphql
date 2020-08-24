@@ -36,7 +36,7 @@ type Query {
 
   # Find users
   #   - accepts up to 100 total combined emails and/or phoneNumbers at a time
-  #   - returns a list of users that match one of the given emails or phoneNumbers,
+  #   - returns a list of users that potential one of the given emails or phoneNumbers,
   #     so up to a max of 100 users will be returned
   #   - users are not returned in any particular order
   #   - in the response, PaginatedUsers.nextToken will always be null
@@ -110,7 +110,9 @@ type Mutation {
     sharingDisabled: Boolean,
     verificationHidden: Boolean,
     languageCode: String,
-    themeCode: String
+    themeCode: String,
+    date_of_birth: String,
+    gender: String
   ): User
 
   # Various one-off user property setters
@@ -285,7 +287,6 @@ type Notification {
   # Each of the following fields will be non-null only for some NotificationTypes,
   # exactly which is listed in the comments for the NotificationType
   followedUserId: ID
-  postedAt: AWSDateTime
   postId: ID
   userChatsWithUnviewedMessagesCount: Int
 }
@@ -302,10 +303,8 @@ type Notification {
 #   - fires when User.chatsWithUnviewedMessagesCount changes
 #   - Notification.userChatsWithUnviewedMessagesCount: the new value
 #
-# USER_FEED_POST_ADDED
-#   - fires when a post is added to User.feed
-#   - Notification.postId: the id of the post that was added
-#   - Notification.postedAt: the postedAt timestamp of the post that was added
+# USER_FEED_CHANGED
+#   - fires when the User's feed may have changed and should be refreshed
 #
 # USER_FOLLOWED_USERS_WITH_STORIES_CHANGED
 #   - fires when one of the user's followeds changes their first story
@@ -316,7 +315,7 @@ enum NotificationType {
   POST_COMPLETED
   POST_ERROR
   USER_CHATS_WITH_UNVIEWED_MESSAGES_COUNT_CHANGED
-  USER_FEED_POST_ADDED
+  USER_FEED_CHANGED
   USER_FOLLOWED_USERS_WITH_STORIES_CHANGED
 }
 
@@ -325,7 +324,6 @@ input NotificationInput {
   userId: ID!  # user this notification is intended for
   type: NotificationType!
   followedUserId: ID
-  postedAt: AWSDateTime
   postId: ID
   userChatsWithUnviewedMessagesCount: Int
 }
@@ -753,8 +751,8 @@ type Post {
 }
 
 type PaginatedPosts {
-  # If `viewedStatus` is non-null, posts will be filtered down to just those with that `viewedStatus`
-  items(viewedStatus: ViewedStatus): [Post!]!
+  # Set the optional arguments to filter down the set of returned posts
+  items(viewedStatus: ViewedStatus, isVerified: Boolean): [Post!]!
   nextToken: String
 }
 
